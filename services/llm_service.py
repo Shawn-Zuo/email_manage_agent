@@ -21,13 +21,13 @@ class LLMService:
     """
 
     def __init__(self) -> None:
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY 未配置，请在 .env 或环境变量中设置。")
+            raise RuntimeError("DEEPSEEK_API_KEY 未配置，请在 .env 或环境变量中设置。")
 
         self.client = OpenAI(api_key=api_key)
         # 模型名称通过环境变量可配置，便于以后切换模型
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        self.model = os.getenv("MODEL", "deepseek-chat")
 
     def analyze(self, email_obj: Email) -> EmailAnalysis:
         """

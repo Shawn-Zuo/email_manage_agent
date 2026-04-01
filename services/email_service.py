@@ -44,7 +44,10 @@ class EmailService:
             emails: List[Email] = []
 
             for uid, data in response.items():
-                msg = email.message_from_bytes(data[b"RFC822"])
+                raw = data.get(b"RFC822") or data.get("RFC822")
+                if not raw:
+                    continue
+                msg = email.message_from_bytes(raw)
 
                 subject = msg.get("subject", "")
                 sender = msg.get("from", "")
