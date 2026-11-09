@@ -1,6 +1,7 @@
+import os
 import unittest
 from datetime import datetime, time, timedelta, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 from zoneinfo import ZoneInfo
 
 from models.email import Email
@@ -9,6 +10,30 @@ from services.report_service import ReportService
 
 
 class DailyMailTests(unittest.TestCase):
+    def setUp(self):
+        env = patch.dict(os.environ, {"EMAIL_FOLDER": "", "EMAIL_TIMEZONE": "Asia/Shanghai"})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def test_client_id_sent_before_folder_selection(self):
+        for supported in (True, False):
+            with self.subTest(supported=supported), patch('services.email_service.IMAPClient') as factory:
+                client = factory.return_value.__enter__.return_value
+                client.has_capability.return_value = supported
+                client.search.return_value = []
+                service = EmailService()
+                service.user, service.password = 'test@163.com', 'test'
+                service.fetch_today()
+                if supported:
+                    client.id_.assert_called_once()
+                    calls = client.mock_calls
+                    identity = next(i for i, c in enumerate(calls) if c[0] == 'id_')
+                    selected = next(i for i, c in enumerate(calls) if c[0] == 'select_folder')
+                    self.assertLess(calls.index(call.login('test@163.com', 'test')), identity)
+                    self.assertLess(identity, selected)
+                else:
+                    client.id_.assert_not_called()
+
     def test_day_boundary_and_readonly(self):
         zone = ZoneInfo('Asia/Shanghai')
         today = datetime.now(zone).date()

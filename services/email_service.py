@@ -47,6 +47,14 @@ class EmailService:
 
         with IMAPClient(self.host, port=self.port, ssl=self.ssl, timeout=30) as client:
             client.login(self.user, self.password)
+            # 网易在打开文件夹前要求客户端声明身份（RFC 2971）。
+            if client.has_capability("ID"):
+                client.id_({
+                    "name": "email_manage_agent",
+                    "version": "0.1.0",
+                    "vendor": "email_manage_agent",
+                    "support-email": self.user,
+                })
             folder = os.getenv("EMAIL_FOLDER")
             if not folder and day:
                 # 优先使用提供商的 All Mail，涵盖已归档邮件；不支持时读取收件箱。

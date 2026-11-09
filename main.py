@@ -1,4 +1,7 @@
 import argparse
+import sys
+
+from imapclient.exceptions import LoginError
 
 from core.agent import MailAgent
 
@@ -10,7 +13,16 @@ def main():
     if args.limit is not None and args.limit < 1:
         parser.error("--limit 必须大于 0")
     agent = MailAgent()
-    agent.run(limit=args.limit)
+    try:
+        agent.run(limit=args.limit)
+    except LoginError:
+        print(
+            "邮箱登录失败：请确认 EMAIL_USER 为完整邮箱地址，EMAIL_PASS 为该邮箱的 "
+            "IMAP 客户端授权码（不是网页登录密码），并检查 IMAP 服务已开启。"
+            "如仍失败，请重新生成授权码并更新 .env。",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
