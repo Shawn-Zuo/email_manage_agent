@@ -1,125 +1,63 @@
-## 项目简介
+# Email Manage Agent
 
-`email_manage_agent` 是一个基于 IMAP 与大语言模型的**邮件智能助手**，主要功能包括：
+基于 IMAP 和 DeepSeek 的命令行邮件助手。默认分析上海时区当天收到的全部邮件，包含已读和未读邮件。
 
-- **多邮箱提供商支持**：通过环境变量配置 IMAP，可支持 Gmail、网易邮箱（163/126）等。
-- **未读邮件智能分析**：对每封未读邮件进行分类、优先级评估，并生成简短总结。
-- **每日邮件总结**：
-  - 统计当天收到的邮件总数。
-  - 按发件人聚合展示每个发件人对应的邮件数量。
-  - 从邮件正文中抽取包含时间点的事件，生成待办列表（To-do）。
+## 运行
 
-代码采用分层与依赖注入的方式组织，尽量遵循**单一职责原则**与**开闭原则**，方便后续扩展新的邮箱服务商、LLM 提供商或报表类型。
-
----
-
-## 项目结构
-
-```text
-email_manage_agent/
-├── core/               # 核心 Agent（业务编排）
-│   └── agent.py        # MailAgent：主入口逻辑
-├── models/             # 领域模型
-│   ├── email.py        # Email：邮件实体（主题、发件人、正文、时间等）
-│   ├── results.py      # EmailAnalysis：单封邮件的分析结果
-│   └── report.py       # DailySummary / SenderSummary / TodoItem：日报与待办
-├── services/           # 应用服务层
-│   ├── email_service.py   # EmailService：IMAP 拉取未读邮件
-│   ├── llm_service.py     # LLMService：调用大语言模型做分析与待办抽取
-│   └── report_service.py  # ReportService：构建每日邮件总结
-├── tools/              # 邮件操作工具
-│   └── email_actions.py   # EmailActions：标记已读、移动到垃圾箱等
-├── config/             # 预留配置目录（当前可按需扩展）
-├── main.py             # 程序入口
-├── pyproject.toml      # 项目依赖与配置
-├── uv.lock             # 依赖锁定文件
-└── .env                # 环境变量配置（不建议提交到 Git）
-```
-
----
-
-## 环境准备
-
-### 1. Python 与依赖
-
-本项目基于 **Python 3.13+**：
+需要 Python 3.13+，在项目根目录执行：
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+uv sync --locked
+uv run python -u main.py
 
-pip install uv              # 如果你打算使用 uv，也可以使用 pip 直接安装依赖
-uv sync                     # 或者: pip install -e ".[dev]"（根据你的习惯调整）
+# 仅处理当天最新的 5 封邮件（结果为部分汇总）
+uv run python -u main.py --limit 5
 ```
 
-如果你不打算使用 `uv`，可直接：
+程序按邮件输出分类、优先级和摘要，然后输出当天邮件数量、发件人统计及含时间的待办。没有当天邮件时直接结束，不调用模型。
+
+## 配置
+
+在 `.env` 中设置（不要提交凭据）：
+
+```env
+EMAIL_USER=your_email_address
+EMAIL_PASS=your_app_password
+EMAIL_IMAP_HOST=imap.gmail.com
+EMAIL_IMAP_PORT=993
+EMAIL_IMAP_SSL=true
+EMAIL_TIMEZONE=Asia/Shanghai
+DEEPSEEK_API_KEY=your_deepseek_api_key
+MODEL=deepseek-chat
+OPENAI_BASE_URL=https://api.deepseek.com
+```
+
+可选 `EMAIL_FOLDER` 指定分析的邮箱文件夹。默认优先选择 IMAP `\\All`（Gmail 的“所有邮件”，包含已归档邮件），服务商不提供时使用 INBOX。Gmail“所有邮件”不包含垃圾邮件和垃圾箱，也可能包含当天的发件副本；不是遍历所有文件夹。指定文件夹后仅分析该文件夹。
+
+## 实现
+
+- 使用服务器 `INTERNALDATE` 收件时间，而不是发件人可设置的 `Date` 邮件头。
+- IMAP 日期搜索先扩大范围，再按指定时区的当天零点至次日零点精确筛选。
+- 只读打开文件夹，使用 `BODY.PEEK[]`，保持邮件已读状态。
+- 先取日期元数据，再每批下载 20 封正文，避免下载历史邮件。
+- 每封邮件独立调用 DeepSeek，一封分析失败会显示错误并继续后续邮件。
+- 汇总按当天邮件统计，待办每批 10 封提取；旧邮件不再回退计入日报。
+- 正文不再截断为 1000 字符；目前主要读取纯文本，不分析附件，超长邮件或大量正文仍可能触及模型上下文限制。
+- `tools/email_actions.py` 提供手动标记已读和移入垃圾箱的工具，主流程没有调用这些操作。
+
+## 测试
 
 ```bash
-pip install -r <根据 pyproject 生成的 requirements>  # 或使用 `pip install imapclient openai python-dotenv`
+uv run python -m unittest discover -s tests -v
 ```
 
-### 2. 环境变量（.env）
+测试覆盖日期边界、UTC 到上海时区转换、只读拉取、已归档文件夹选择、日报过滤及待办分批处理。测试使用模拟 IMAP/LLM，不访问真实邮箱或产生模型费用。
 
-在项目根目录创建 `.env` 文件（**请勿提交到 Git 仓库**），常用配置示例：
+## 结构
 
-```bash
-# 邮箱账号
-EMAIL_USER="your_name@163.com"
-EMAIL_PASS="your_password_or_app_token"
-
-# IMAP 配置 —— 以网易 163 邮箱为例
-EMAIL_IMAP_HOST="imap.163.com"
-EMAIL_IMAP_PORT="993"
-EMAIL_IMAP_SSL="true"
-
-# 垃圾箱文件夹（不同服务商可能不一样）
-# Gmail 通常为 "[Gmail]/Trash"
-# 网易等可以是 "Trash"、"已删除" 等
-EMAIL_TRASH_FOLDER="Trash"
-
-# OpenAI 配置
-OPENAI_API_KEY="sk-..."
-OPENAI_MODEL="gpt-4.1-mini"  # 可按需替换其他模型
-```
-
-若使用 Gmail，可将 `EMAIL_IMAP_HOST` 改为 `imap.gmail.com`，`EMAIL_TRASH_FOLDER` 改为 `[Gmail]/Trash`，其余保持不变。
-
----
-
-## 运行方式
-
-在虚拟环境已激活、`.env` 已配置好的前提下，在项目根目录执行：
-
-```bash
-python main.py
-```
-
-执行流程大致如下：
-
-1. `EmailService` 连接 IMAP，拉取所有未读邮件并解析为 `Email` 对象。
-2. `MailAgent` 对每封邮件调用 `LLMService.analyze`：  
-   - 输出该邮件的 **分类**、**优先级** 与 **简短总结**。
-3. 所有邮件处理完毕后，`ReportService` 会基于这些邮件生成 `DailySummary`：  
-   - 今日（或传入集合）总邮件数。  
-   - 按发件人聚合的统计信息。  
-   - 从邮件中抽取的、带有时间点的待办事项列表。
-4. 在终端中打印每日总结与待办清单，方便你快速了解当天的邮件情况和关键 todo。
-
----
-
-## 设计与扩展性说明
-
-- **分层设计**  
-  - `core` 只负责流程编排，不关心外部实现细节。  
-  - `services` 专注于对外系统（IMAP、LLM）的交互和核心应用逻辑。  
-  - `models` 封装领域对象，便于在不同层之间传递。  
-  - `tools` 提供对邮件的具体操作（标记已读、移动到垃圾箱等），可以按需集成到 Agent 流程中。
-
-- **开闭原则与可配置性**  
-  - 多邮箱支持通过环境变量控制 IMAP 主机、端口、SSL 等参数，而不是写死在代码中。  
-  - LLM 模型名称也通过环境变量配置，从而可以独立升级或替换模型。  
-  - 如果未来需要接入其他 LLM（如本地模型），可以通过新增/替换 `LLMService` 的实现来完成，而不必修改 `MailAgent`。
-
-- **报表与待办抽取的可扩展性**  
-  - 每日总结逻辑集中在 `ReportService` 中，若要新增周报、月报等，只需在该服务中增加新的构建方法。  
-  - 待办抽取是通过 `LLMService.extract_todos` 实现的，未来你也可以替换为纯规则引擎或其他 NLP 模块。
+- `main.py`：CLI 参数。
+- `core/agent.py`：邮件分析与输出编排。
+- `services/email_service.py`：邮件筛选和解析。
+- `services/llm_service.py`：分类、摘要、待办抽取。
+- `services/report_service.py`：统计汇总。
+- `models/`：邮件与报告数据模型。

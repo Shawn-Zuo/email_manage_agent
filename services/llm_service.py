@@ -25,7 +25,12 @@ class LLMService:
         if not api_key:
             raise RuntimeError("DEEPSEEK_API_KEY 未配置，请在 .env 或环境变量中设置。")
 
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
+            timeout=60,
+            max_retries=1,
+        )
         # 模型名称通过环境变量可配置，便于以后切换模型
         self.model = os.getenv("MODEL", "deepseek-chat")
 

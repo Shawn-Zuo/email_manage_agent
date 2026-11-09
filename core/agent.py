@@ -6,7 +6,7 @@ from services.report_service import ReportService
 class MailAgent:
     """
     应用入口 Agent：
-    - 拉取未读邮件
+    - 拉取当天全部邮件
     - 对每封邮件调用 LLM 分析
     - 生成并输出“每日邮件总结”和待办事项
     """
@@ -16,21 +16,27 @@ class MailAgent:
         self.llm = LLMService()
         self.report_service = ReportService(self.llm)
 
-    def run(self) -> None:
-        emails = self.email_service.fetch_unread()
+    def run(self, limit: int | None = None) -> None:
+        print("正在读取当天邮件（包含已读和未读）…", flush=True)
+        emails = self.email_service.fetch_today(limit=limit)
 
         if not emails:
-            print("📭 没有未读邮件")
+            print("📭 当天没有邮件")
             return
 
-        print(f"📬 共 {len(emails)} 封未读邮件\n")
+        print(f"📬 共 {len(emails)} 封当天邮件\n")
 
-        for email in emails:
+        for index, email in enumerate(emails, 1):
             print("=" * 40)
+            print(f"进度: {index}/{len(emails)}")
             print(f"标题: {email.subject}")
             print(f"发件人: {email.sender}")
 
-            result = self.llm.analyze(email)
+            try:
+                result = self.llm.analyze(email)
+            except Exception as exc:
+                print(f"分析失败: {type(exc).__name__}: {exc}")
+                continue
 
             print(f"分类: {result.category}")
             print(f"优先级: {result.priority}")
@@ -42,6 +48,8 @@ class MailAgent:
 
         print("#" * 40)
         print(f"📅 每日邮件总结（{summary.date.isoformat()}）")
+        if limit is not None:
+            print(f"注意：本次最多处理 {limit} 封，仅为部分邮件汇总。")
         print(f"- 总共邮件数量: {summary.total_emails}")
         print("- 按发件人统计:")
         for sender_summary in summary.sender_summaries:
