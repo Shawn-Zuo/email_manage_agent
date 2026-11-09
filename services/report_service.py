@@ -1,9 +1,10 @@
 import os
 from collections import Counter
-from datetime import datetime
+from datetime import timedelta
 from typing import Iterable
 from zoneinfo import ZoneInfo
 
+from config.date_range import date_range
 from models.email import Email
 from models.report import DailySummary, SenderSummary
 from services.llm_service import LLMService
@@ -18,14 +19,15 @@ class ReportService:
     def __init__(self, llm_service: LLMService | None = None) -> None:
         self._llm = llm_service or LLMService()
 
-    def build_daily_summary(self, emails: Iterable[Email]) -> DailySummary:
+    def build_daily_summary(self, emails: Iterable[Email], days: int = 1) -> DailySummary:
         zone = ZoneInfo(os.getenv("EMAIL_TIMEZONE", "Asia/Shanghai"))
-        today = datetime.now(zone).date()
+        start, end = date_range(days)
+        today = end.date() - timedelta(days=1)
         todays_emails = [
             e for e in emails
             if e.received_at is not None
-            and (e.received_at.astimezone(zone) if e.received_at.tzinfo
-                 else e.received_at.replace(tzinfo=zone)).date() == today
+            and start <= (e.received_at.astimezone(zone) if e.received_at.tzinfo
+                 else e.received_at.replace(tzinfo=zone)) < end
         ]
 
         total = len(todays_emails)

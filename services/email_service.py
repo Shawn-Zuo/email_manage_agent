@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from imapclient import IMAPClient
 
+from config.date_range import date_range, validate_days
 from models.email import Email
 
 load_dotenv()
@@ -32,14 +33,18 @@ class EmailService:
 
     def fetch_today(self, limit: int | None = None) -> List[Email]:
         """按服务器收件时间筛选本地当天邮件，包含已读和未读。"""
-        zone = ZoneInfo(os.getenv("EMAIL_TIMEZONE", "Asia/Shanghai"))
-        today = datetime.now(zone).date()
-        return self._fetch(limit=limit, day=today, zone=zone)
+        return self.fetch_recent(days=1, limit=limit)
+
+    def fetch_recent(self, days: int = 1, limit: int | None = None) -> List[Email]:
+        validate_days(days)
+        start, end = date_range(days)
+        return self._fetch(limit=limit, day=end.date() - timedelta(days=1),
+                           zone=start.tzinfo, days=days)
 
     def fetch_unread(self, limit: int | None = None) -> List[Email]:
         return self._fetch(limit=limit)
 
-    def _fetch(self, limit: int | None = None, day: date | None = None, zone: ZoneInfo | None = None) -> List[Email]:
+    def _fetch(self, limit: int | None = None, day: date | None = None, zone: ZoneInfo | None = None, days: int = 1) -> List[Email]:
         if limit is not None and limit < 1:
             raise ValueError("limit 必须大于 0")
         if not self.user or not self.password:
@@ -65,17 +70,17 @@ class EmailService:
             client.select_folder(folder or "INBOX", readonly=True)
 
             # IMAP 日期搜索忽略时区，先扩大候选范围，再用 INTERNALDATE 精确筛选。
-            criteria = ["SINCE", day - timedelta(days=1), "BEFORE", day + timedelta(days=2)] if day else ["UNSEEN"]
+            criteria = ["SINCE", day - timedelta(days=days), "BEFORE", day + timedelta(days=2)] if day else ["UNSEEN"]
             messages = client.search(criteria)
             received_dates = {}
             if day and messages:
-                start = datetime.combine(day, time.min, tzinfo=zone)
+                start = datetime.combine(day - timedelta(days=days - 1), time.min, tzinfo=zone)
                 end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone)
                 metadata = client.fetch(messages, ["INTERNALDATE"])
                 for uid, data in metadata.items():
                     received = data.get(b"INTERNALDATE")
                     if received is None:
-                        raise RuntimeError(f"邮件 {uid} 缺少收件时间，无法准确筛选当天邮件")
+                        raise RuntimeError(f"邮件 {uid} 缺少收件时间，无法准确筛选所选日期范围邮件")
                     if received.tzinfo is None:
                         received = received.replace(tzinfo=zone)
                     received_dates[uid] = received

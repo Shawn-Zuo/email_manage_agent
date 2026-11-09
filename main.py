@@ -8,13 +8,14 @@ from core.agent import MailAgent
 
 def main():
     parser = argparse.ArgumentParser(description="邮件智能分析与待办提取")
-    parser.add_argument("--limit", type=int, help="仅分析当天最新的 N 封邮件（默认处理当天全部邮件）")
+    parser.add_argument("--limit", type=int, help="仅分析所选日期范围最新的 N 封邮件（默认全部）")
+    parser.add_argument("--days", type=int, choices=range(1, 8), default=1, help="包含今天的最近 1–7 天，默认 1 天")
     args = parser.parse_args()
     if args.limit is not None and args.limit < 1:
         parser.error("--limit 必须大于 0")
     agent = MailAgent()
     try:
-        agent.run(limit=args.limit)
+        agent.run(limit=args.limit, days=args.days)
     except LoginError:
         print(
             "邮箱登录失败：请确认 EMAIL_USER 为完整邮箱地址，EMAIL_PASS 为该邮箱的 "

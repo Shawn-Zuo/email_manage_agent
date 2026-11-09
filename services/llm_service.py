@@ -87,7 +87,7 @@ class LLMService:
 
         system_prompt = (
             "你是一个时间与任务抽取助手。"
-            "用户会给你一天内的多封邮件，请你找出所有包含【具体时间点】的安排，"
+            "用户会给你所选日期范围内的多封邮件，请你找出所有包含【具体时间点】的安排，"
             "例如开会、电话、截止日期等，并统一整理成待办事项列表。"
             "只返回 JSON 数组，每个元素包含字段："
             "description（任务描述，字符串），"
@@ -99,6 +99,7 @@ class LLMService:
         lines = []
         for idx, e in enumerate(emails_list, start=1):
             lines.append(f"邮件 {idx}:")
+            lines.append(f"  收件时间: {e.received_at.isoformat() if e.received_at else '未知'}")
             lines.append(f"  主题: {e.subject}")
             lines.append(f"  发件人: {e.sender}")
             lines.append(f"  正文: {e.body}")

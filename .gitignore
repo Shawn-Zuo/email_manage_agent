@@ -9,3 +9,10 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# Local credentials and private analysis exports
+.env.*
+!.env.example
+*.log
+local_reports/
+.DS_Store
